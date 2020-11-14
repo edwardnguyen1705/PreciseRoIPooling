@@ -5,19 +5,34 @@
 # Date   : 18/02/2018
 #
 # This file is part of Jacinle.
+# $ export PYTHONPATH="$PWD"
+
+import sys
+sys.path.insert(0, "./")
 
 import unittest
+from unittest import mock
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from jactorch.utils.unittest import TorchTestCase
-
+import torchtestcase as ttc # https://github.com/phohenecker/torch-test-case
 from prroi_pool import PrRoIPool2D
+from torch.autograd import Variable
+from torch.nn.utils import rnn
 
 
-class TestPrRoIPool2D(TorchTestCase):
+def as_numpy(v):
+    if isinstance(v, Variable):
+        v = v.data
+    return v.cpu().numpy()
+
+
+class TestPrRoIPool2D(unittest.TestCase):
+    def setUp(self):
+        self.test_case = ttc.TorchTestCase()
+
     def test_forward(self):
         pool = PrRoIPool2D(7, 7, spatial_scale=0.5)
         features = torch.rand((4, 16, 24, 32)).cuda()
@@ -34,6 +49,14 @@ class TestPrRoIPool2D(TorchTestCase):
             out_gold[1, :, 7:14, 7:14],
         ), dim=0))
 
+    def assertTensorClose(self, a, b, atol=1e-3, rtol=1e-3):
+        npa, npb = as_numpy(a), as_numpy(b)
+        self.assertTrue(
+                np.allclose(npa, npb, atol=atol),
+                'Tensor close check failed\n{}\n{}\nadiff={}, rdiff={}'.format(a, b, np.abs(npa - npb).max(), np.abs((npa - npb) / np.fmax(npa, 1e-5)).max())
+        )
+
+
     def test_backward_shapeonly(self):
         pool = PrRoIPool2D(2, 2, spatial_scale=0.5)
 
@@ -48,9 +71,9 @@ class TestPrRoIPool2D(TorchTestCase):
         loss = out.sum()
         loss.backward()
 
-        self.assertTupleEqual(features.size(), features.grad.size())
-        self.assertTupleEqual(rois.size(), rois.grad.size())
-
+        self.test_case.assertEqual(features.size(), features.grad.size())
+        self.test_case.assertEqual(rois.size(), rois.grad.size())
+ 
 
 if __name__ == '__main__':
     unittest.main()
